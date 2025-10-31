@@ -1,125 +1,235 @@
-# test
+## Practical System Design Pattern: Contention & Multi‑Step Workflow
 
-This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+> Native AOT .NET Serverless E‑Wallet Transaction Processing Saga (AWS Step Functions + DynamoDB + Postgres (row locking) + Idempotent Inbox)
 
-- src - Code for the application's Lambda function.
-- events - Invocation events that you can use to invoke the function.
-- test - Unit tests for the application code. 
-- template.yaml - A template that defines the application's AWS resources.
+This project demonstrates a production‑style approach to handling multi‑step financial transactions under high contention. A single logical "transfer" spans multiple independently deployed Lambda functions orchestrated by an AWS Step Functions state machine (Saga pattern). The implementation balances simplicity with strong correctness guarantees:
 
-The application uses several AWS resources, including Lambda functions and an API Gateway API. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+- Idempotent transaction creation (DynamoDB TransactWrite + conditional puts)
+- Pessimistic row‑level locking for balance updates (Postgres `SELECT ... FOR UPDATE`)
+- Inbox table to suppress duplicate credit/debit effects on retries
+- Explicit compensation paths (reverse credit + refund debit) on failure
+- Native AOT compiled .NET Lambdas for cold start minimization
 
-If you prefer to use an integrated development environment (IDE) to build and test your application, you can use the AWS Toolkit.  
-The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI to build and deploy serverless applications on AWS. The AWS Toolkit also adds a simplified step-through debugging experience for Lambda function code. See the following links to get started.
+If this helps, please ⭐ the repository.
 
-* [CLion](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [GoLand](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [IntelliJ](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [WebStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [Rider](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PhpStorm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [PyCharm](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [RubyMine](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [DataGrip](https://docs.aws.amazon.com/toolkit-for-jetbrains/latest/userguide/welcome.html)
-* [VS Code](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html)
-* [Visual Studio](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/welcome.html)
+---
 
-## Deploy the sample application
+## Architecture Overview
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
+![Architecture Diagram](https://miro.medium.com/v2/resize:fit:1400/format:webp/1*YcloQc7YsOUX812GdeK6Cg.png)
 
-To use the SAM CLI, you need the following tools.
+The diagram illustrates: client request → CreateTransaction Lambda (DynamoDB TransactWrite) → DynamoDB Stream → EventBridge Pipe (filter) → Step Functions Saga orchestrating debit / credit / success or compensation paths with Postgres row locks and DynamoDB idempotency.
 
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
-* .NET Core - [Install .NET Core](https://www.microsoft.com/net/download)
-* Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
+### Components
+| Component | Purpose |
+|-----------|---------|
+| DynamoDB Single Table | Stores transaction records + idempotency inbox entries (partition key prefixes: `INBOX#`, `TRANSACTION#`) |
+| Postgres (schema `wallet`) | Durable wallet balances with strict row‑level locking |
+| EventBridge Pipe | Declarative filtering + direct handoff from DDB Stream to Step Functions |
+| Step Functions Saga | Orchestrates steps + compensation + retries |
+| Lambda Functions (AOT) | Single responsibility units for each workflow step |
 
-To build and deploy your application for the first time, run the following in your shell:
+---
 
-```bash
-sam build
-sam deploy --guided
+## Guarantees & Patterns
+
+1. Atomic + Idempotent Transaction Creation
+
+- Two conditional `Put` operations executed inside one `TransactWriteItems` call.
+- Duplicate client submission → `ConditionCheckFailedException` → HTTP 409.
+
+1. Idempotent Side‑Effects (Debit/Credit)
+
+- Inbox table in Postgres: unique constraint on `(transaction_id)` prevents duplicate writes when a Lambda is retried.
+
+1. Contention Safety
+
+- Pessimistic lock (`SELECT ... FOR UPDATE`) prevents concurrent decrements from racing on the same row.
+
+1. Compensating Actions
+
+- Failure after debit but before credit → refund sender.
+- Failure after credit → reverse receiver credit.
+
+1. Fast Cold Starts
+
+- Native AOT trimming reduces package size and startup latency across multiple small Lambdas.
+
+---
+
+## Saga State Machine Steps
+
+| Step | Lambda | Action | Compensation Trigger |
+|------|--------|--------|----------------------|
+| ProcessTransaction | `Ewallet.ProcessTransactionFunction` | Mark transaction PROCESSING | n/a |
+| DebitSenderWalletBalance | `Ewallet.DebitSenderWalletBalanceFunction` | Row‑lock sender, subtract balance, insert inbox | RefundSender on downstream failure |
+| CreditReceiverWalletBalance | `Ewallet.CreditReceiverWalletBalanceFunction` | Row‑lock receiver, add balance, insert inbox | ReverseReceiverCredit on downstream failure |
+| SuccessTransaction | `Ewallet.SuccessTransactionFunction` | Mark transaction SUCCESS | n/a |
+| ReverseReceiverCredit (compensation) | `Ewallet.ReverseReceiverCreditFunction` | Undo receiver credit | n/a |
+| RefundSenderWalletBalance (compensation) | `Ewallet.RefundSenderWalletBalanceFunction` | Refund sender debit | n/a |
+| FailTransaction | `Ewallet.FailTransactionFunction` | Mark transaction FAIL + reason | n/a |
+
+Retries are safe because every balance mutation is idempotent via inbox uniqueness.
+
+---
+
+## Key Code Snippets
+
+### DynamoDB Transaction Creation
+
+```csharp
+var transactRequest = new TransactWriteItemsRequest
+{
+    TransactItems = new List<TransactWriteItem>
+    {
+        new() { Put = new Put { TableName = tableName, Item = idempotentItem, ConditionExpression = "attribute_not_exists(PK)" } },
+        new() { Put = new Put { TableName = tableName, Item = transactionItem, ConditionExpression = "attribute_not_exists(PK)" } },
+    },
+};
+await _dynamoDbClient.TransactWriteItemsAsync(transactRequest);
 ```
 
-The first command will build the source of your application. The second command will package and deploy your application to AWS, with a series of prompts:
+### Inbox Pattern (Postgres)
 
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
-
-You can find your API Gateway Endpoint URL in the output values displayed after deployment.
-
-## Use the SAM CLI to build and test locally
-
-Build your application with the `sam build` command.
-
-```bash
-test$ sam build
+```csharp
+const string insertInboxSql = @"INSERT INTO wallet.inbox (transaction_id, type, amount, created_at, updated_at)
+VALUES (@TransactionId, @Type, @Amount, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC');";
+try
+{
+    await connection.ExecuteAsync(insertInboxSql, new { TransactionId = "CREDIT#" + request.TransactionId, Type = "RECEIVER", Amount = request.Amount }, transaction);
+}
+catch (PostgresException ex) when (ex.SqlState == "23505")
+{
+    throw new DuplicateTransactionException($"Duplicate transaction_id {request.TransactionId} detected. Step Function retry suppressed.");
+}
 ```
 
-The SAM CLI installs dependencies defined in `src/HelloWorldAot.csproj`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
+### Pessimistic Lock & Update
 
-Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
-
-Run functions locally and invoke them with the `sam local invoke` command.
-
-```bash
-test$ sam local invoke HelloWorldAotFunction --event events/event.json
+```csharp
+const string selectAccountSql = @"SELECT id, user_id, balance FROM wallet.account WHERE user_id = @SenderUserId FOR UPDATE;";
+var account = await connection.QuerySingleOrDefaultAsync<Account>(selectAccountSql, new { SenderUserId = request.SenderUserId }, transaction);
+const string updateBalanceSql = @"UPDATE wallet.account SET balance = balance - @Amount, updated_at = NOW() AT TIME ZONE 'UTC' WHERE id = @Id;";
+await connection.ExecuteAsync(updateBalanceSql, new { Amount = amount, Id = account.Id }, transaction);
+await transaction.CommitAsync();
 ```
 
-The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
+---
 
-```bash
-test$ sam local start-api
-test$ curl http://localhost:3000/
+## Data Model
+
+### DynamoDB Single Table (Logical PK prefixes)
+
+| PK Prefix | Entity | Notes |
+|-----------|--------|-------|
+| `INBOX#<uuid>` | Idempotency marker for creation | Prevents duplicate create |
+| `TRANSACTION#<id>` | Transaction item | Drives stream event |
+
+### Postgres Schema (Excerpt)
+
+```sql
+CREATE TABLE wallet.account (
+  id uuid PRIMARY KEY,
+  user_id text UNIQUE NOT NULL,
+  balance numeric(18,2) NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE wallet.inbox (
+  transaction_id text PRIMARY KEY,
+  type text NOT NULL,
+  amount numeric(18,2) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
+);
 ```
 
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
+---
 
-```yaml
-      Events:
-        HelloWorldAot:
-          Type: Api
-          Properties:
-            Path: /hello
-            Method: get
+## Deployment
+
+You can deploy infrastructure in two ways:
+
+1. AWS CDK (recommended for full stack including Pipe + State Machine)
+2. AWS SAM (for Lambda packaging/build)
+
+### Prerequisites
+
+- .NET 8 SDK (Native AOT)
+- Node.js (for CDK)
+- AWS CLI configured (`aws configure`)
+- Docker (required for SAM build Native AOT + Lambda packaging)
+
+### CDK Deploy
+
+```powershell
+cd cdk
+npm install
+npx cdk synth
+npx cdk deploy --require-approval never
 ```
 
-## Add a resource to your application
-The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
+---
 
-## Fetch, tail, and filter Lambda function logs
+## Local Development & Testing
 
-To simplify troubleshooting, SAM CLI has a command called `sam logs`. `sam logs` lets you fetch logs generated by your deployed Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
+### Build Solution
 
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
-
-```bash
-test$ sam logs -n HelloWorldAotFunction --stack-name test --tail
+```powershell
+dotnet build Ewallet.sln
 ```
 
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
 
-## Unit tests
+### Invoke a Function Locally
 
-Tests are defined in the `test` folder in this project.
-
-```bash
-test$ dotnet test test/HelloWorldAot.Test
+```powershell
+sam local invoke Ewallet.CreateTransactionFunction --event events/create-transaction-event.json
 ```
 
-## Cleanup
+### Manual Saga Trigger
 
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
+If you need to replay a DynamoDB stream event locally, craft an input matching the Pipe template:
 
-```bash
-sam delete --stack-name test
+```json
+{
+  "TransactionId": "TRANSACTION#123",
+  "SenderUserId": "user-a",
+  "ReceiverUserId": "user-b",
+  "Amount": 50
+}
+ 
 ```
 
-## Resources
+Invoke the first processing Lambda or start an execution of the Step Function in AWS console.
 
-See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
+---
 
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
+## Error Handling & Retries
+
+- Duplicate creation → HTTP 409 surfaced (safe to retry client side).
+- Lambda retry (e.g., network transient) results in inbox uniqueness violation → suppress duplicate side‑effect; you can log and treat as success.
+- Business failures (insufficient funds) raise custom exceptions; Saga transitions to compensation + `FailTransaction`.
+- All DB mutations wrapped in explicit transactions; commit only after successful validation and inbox write.
+
+---
+
+## Extending
+
+Ideas for enhancement:
+
+- Api Gateway integration.
+- Dead Letter Queue for Event Bridge Pipe
+- Unit Tests and Integration Tests
+
+---
+
+## License
+
+Distributed under the terms of the repository root LICENSE.
+
+---
+
+If this project is useful, please give it a ⭐ and share feedback or issues.
+
+Happy building!
