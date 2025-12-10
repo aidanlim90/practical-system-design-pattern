@@ -1,0 +1,6 @@
+@HandlingLargeBlobs_HostAddress = http://localhost:5117
+
+GET {{HandlingLargeBlobs_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
