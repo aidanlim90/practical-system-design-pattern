@@ -1,0 +1,6 @@
+@Contention.InventoryManagement_HostAddress = http://localhost:5034
+
+GET {{Contention.InventoryManagement_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
