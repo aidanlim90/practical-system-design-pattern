@@ -1,0 +1,6 @@
+@HandlingLongRunningTask.Kafka_HostAddress = http://localhost:5089
+
+GET {{HandlingLongRunningTask.Kafka_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
