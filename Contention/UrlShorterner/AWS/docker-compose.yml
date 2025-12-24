@@ -1,0 +1,85 @@
+version: '3'
+
+services:
+  redis1:
+    image: redis
+    container_name: redis1
+    volumes:
+      - ./redis/redis1.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    networks:
+      - redis-net
+    ports:
+      - "6380:6379"
+
+  redis2:
+    image: redis
+    container_name: redis2
+    volumes:
+      - ./redis/redis2.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    networks:
+      - redis-net
+    ports:
+      - "6381:6379"
+
+  sentinel1:
+    image: redis
+    container_name: sentinel1
+    volumes:
+      - ./redis/sentinel1.conf:/usr/local/etc/redis/sentinel.conf
+    command: ["redis-server", "/usr/local/etc/redis/sentinel.conf", "--sentinel"]
+    networks:
+      - redis-net
+    depends_on:
+      - redis1
+      - redis2
+
+  sentinel2:
+    image: redis
+    container_name: sentinel2
+    volumes:
+      - ./redis/sentinel2.conf:/usr/local/etc/redis/sentinel.conf
+    command: ["redis-server", "/usr/local/etc/redis/sentinel.conf", "--sentinel"]
+    networks:
+      - redis-net
+    depends_on:
+      - redis1
+      - redis2
+
+  haproxy:
+    image: haproxy
+    container_name: haproxy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    ports:
+      - "6379:6379"
+    networks:
+      - redis-net
+    depends_on:
+      - sentinel1
+      - sentinel2
+  postgres:
+    image: postgres:15
+    container_name: urlshortener_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: urlshortener
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+
+networks:
+  redis-net:
+    driver: bridge

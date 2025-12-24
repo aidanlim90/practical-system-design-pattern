@@ -1,0 +1,70 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.AWS.Api", "UrlShortener.AWS.Api\UrlShortener.AWS.Api.csproj", "{B0C50A06-85DE-42B0-A2D6-5E0956693447}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.ReadService", "UrlShortener.ReadService\UrlShortener.ReadService.csproj", "{050593EA-B0ED-4661-8A4A-E3E71A849BF7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
+	ProjectSection(SolutionItems) = preProject
+		..\..\.editorconfig = ..\..\.editorconfig
+		..\..\Directory.Build.Props = ..\..\Directory.Build.Props
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.Services.Write", "..\src\UrlShortener.Services.Write\UrlShortener.Services.Write.csproj", "{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "UrlShortener.Services", "UrlShortener.Services", "{5873B88C-F3A2-8720-B066-85384CFCC4C0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Debug|x64.Build.0 = Debug|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Debug|x86.Build.0 = Debug|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Release|x64.ActiveCfg = Release|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Release|x64.Build.0 = Release|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Release|x86.ActiveCfg = Release|Any CPU
+		{B0C50A06-85DE-42B0-A2D6-5E0956693447}.Release|x86.Build.0 = Release|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Debug|x64.Build.0 = Debug|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Debug|x86.Build.0 = Debug|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Release|x64.ActiveCfg = Release|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Release|x64.Build.0 = Release|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Release|x86.ActiveCfg = Release|Any CPU
+		{050593EA-B0ED-4661-8A4A-E3E71A849BF7}.Release|x86.Build.0 = Release|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Debug|x64.Build.0 = Debug|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Debug|x86.Build.0 = Debug|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Release|x64.ActiveCfg = Release|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Release|x64.Build.0 = Release|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Release|x86.ActiveCfg = Release|Any CPU
+		{CA4A5577-6FC8-4FC2-8EA7-E168FA70304F}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

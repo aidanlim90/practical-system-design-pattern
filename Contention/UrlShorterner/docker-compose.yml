@@ -1,0 +1,27 @@
+version: "3.9"
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    command: ["redis-server", "--requirepass", "helloworld12345678"]
+    ports:
+      - "6379:6379"
+    volumes: 
+      - cache:/data
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: UrlShortenerDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  cache:
+    driver: local
+  pgdata:
+    driver: local
